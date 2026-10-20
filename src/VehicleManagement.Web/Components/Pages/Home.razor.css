@@ -93,6 +93,12 @@ h2 {
     color: #176438;
 }
 
+.warning-message {
+    border: 1px solid #e6cb85;
+    background: #fff8e8;
+    color: #73510f;
+}
+
 .content-grid {
     display: grid;
     grid-template-columns: minmax(21rem, 0.8fr) minmax(34rem, 1.5fr);
@@ -319,6 +325,10 @@ tbody tr:hover {
     padding: 3rem 1.25rem;
     color: #667085;
     text-align: center;
+}
+
+.list-error-state {
+    color: #8f2020;
 }
 
 @media (max-width: 68rem) {

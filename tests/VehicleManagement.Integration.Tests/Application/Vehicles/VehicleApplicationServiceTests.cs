@@ -87,7 +87,7 @@ public sealed class VehicleApplicationServiceTests
         var categoryRepository = new FakeCategoryConfigurationRepository(configuration: null);
         var service = CreateService(vehicleRepository, manufacturerRepository, categoryRepository);
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsAsync<CategoryConfigurationMissingException>(() =>
             service.GetVehiclesAsync(VehicleSortField.OwnerName, descending: false));
 
         Assert.Equal("The category configuration has not been created.", exception.Message);

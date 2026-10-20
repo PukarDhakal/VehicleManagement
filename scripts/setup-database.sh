@@ -40,11 +40,37 @@ fi
 chmod 600 "$passwordFile"
 export MSSQL_SA_PASSWORD
 
+portFile="$PWD/.sqlserver-port"
+if [[ -L "$portFile" ]]; then
+    echo "The local SQL Server port file must not be a symbolic link." >&2
+    exit 1
+fi
+
+if [[ -z "${MSSQL_HOST_PORT:-}" ]]; then
+    if [[ -f "$portFile" ]]; then
+        MSSQL_HOST_PORT="$(cat "$portFile")"
+    else
+        MSSQL_HOST_PORT=14330
+    fi
+fi
+
+if [[ ! "$MSSQL_HOST_PORT" =~ ^[1-9][0-9]{0,4}$ ]] || (( 10#$MSSQL_HOST_PORT > 65535 )); then
+    echo "MSSQL_HOST_PORT must be a number from 1 to 65535." >&2
+    exit 1
+fi
+
+printf '%s' "$MSSQL_HOST_PORT" > "$portFile"
+chmod 600 "$portFile"
+export MSSQL_HOST_PORT
+
 # The connection string quotes its password so delimiters remain part of the password.
 escapedPassword="${MSSQL_SA_PASSWORD//\"/\"\"}"
-export ConnectionStrings__VehicleManagement="Server=localhost,1433;Database=VehicleManagement;User Id=sa;Password=\"${escapedPassword}\";Encrypt=True;TrustServerCertificate=True"
+export ConnectionStrings__VehicleManagement="Server=localhost,${MSSQL_HOST_PORT};Database=VehicleManagement;User Id=sa;Password=\"${escapedPassword}\";Encrypt=True;TrustServerCertificate=True"
 
-docker compose up -d --wait --wait-timeout 180 sqlserver
+if ! docker compose up -d --wait --wait-timeout 180 sqlserver; then
+    echo "SQL Server did not start. If port ${MSSQL_HOST_PORT} is in use, choose another with MSSQL_HOST_PORT=14331 ./scripts/setup-database.sh." >&2
+    exit 1
+fi
 dotnet tool restore
 dotnet restore VehicleManagement.sln
 dotnet tool run dotnet-ef database update \

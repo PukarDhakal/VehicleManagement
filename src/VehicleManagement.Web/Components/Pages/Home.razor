@@ -1,5 +1,7 @@
 @page "/"
 @using System.ComponentModel.DataAnnotations
+@using System.Data.Common
+@using VehicleManagement.Application.Categories
 @using VehicleManagement.Application.Vehicles
 @using VehicleManagement.Domain
 @using VehicleManagement.Domain.Vehicles
@@ -18,20 +20,25 @@
                 Add vehicles and see their current category based on weight.
             </p>
         </div>
-        <div class="vehicle-total" aria-label="Total vehicles">
-            <strong>@_vehicles.Count</strong>
-            <span>@(_vehicles.Count == 1 ? "vehicle" : "vehicles")</span>
+        <div class="vehicle-total" aria-label="@(_hasLoadedVehicles ? "Total vehicles" : "Vehicle count unavailable")">
+            <strong>@(_hasLoadedVehicles ? _vehicles.Count.ToString() : "—")</strong>
+            <span>@(!_hasLoadedVehicles ? "list unavailable" : _vehicles.Count == 1 ? "vehicle" : "vehicles")</span>
         </div>
     </header>
 
-    @if (!string.IsNullOrWhiteSpace(_errorMessage))
+    @if (!string.IsNullOrWhiteSpace(_manufacturerErrorMessage))
     {
-        <div class="message error-message" role="alert">@_errorMessage</div>
+        <div class="message error-message" role="alert">@_manufacturerErrorMessage</div>
     }
 
-    @if (!string.IsNullOrWhiteSpace(_successMessage))
+    @if (!string.IsNullOrWhiteSpace(_saveErrorMessage))
     {
-        <div class="message success-message" role="status">@_successMessage</div>
+        <div class="message error-message" role="alert">@_saveErrorMessage</div>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(_saveMessage))
+    {
+        <div class="message @(_saveMessageIsWarning ? "warning-message" : "success-message")" role="status">@_saveMessage</div>
     }
 
     <div class="content-grid">
@@ -86,7 +93,7 @@
                     </div>
                 </div>
 
-                <button class="primary-button" type="submit" disabled="@(_isSaving || _isLoading)">
+                <button class="primary-button" type="submit" disabled="@(_isSaving || _isLoading || _manufacturerErrorMessage is not null)">
                     @(_isSaving ? "Saving..." : "Add vehicle")
                 </button>
 
@@ -119,7 +126,7 @@
                         Descending
                     </label>
 
-                    <button class="secondary-button" type="button" @onclick="LoadVehiclesAsync" disabled="@_isLoading">
+                    <button class="secondary-button" type="button" @onclick="RefreshVehiclesAsync" disabled="@(_isLoading || _isSaving)">
                         Apply
                     </button>
                 </div>
@@ -128,6 +135,10 @@
             @if (_isLoading)
             {
                 <p class="empty-state" role="status">Loading vehicles...</p>
+            }
+            else if (_listErrorMessage is not null)
+            {
+                <p class="empty-state list-error-state" role="alert">@_listErrorMessage</p>
             }
             else if (_vehicles.Count == 0)
             {
@@ -178,9 +189,13 @@
     private bool _descending;
     private bool _isLoading = true;
     private bool _isSaving;
+    private bool _hasLoadedVehicles;
+    private bool _saveMessageIsWarning;
     private int _currentYear;
-    private string? _errorMessage;
-    private string? _successMessage;
+    private string? _manufacturerErrorMessage;
+    private string? _saveErrorMessage;
+    private string? _saveMessage;
+    private string? _listErrorMessage;
 
     protected override async Task OnInitializedAsync()
     {
@@ -191,24 +206,29 @@
         try
         {
             _manufacturers = await VehicleService.GetManufacturersAsync();
-            _vehicles = await VehicleService.GetVehiclesAsync(_sortField, _descending);
         }
         catch (Exception exception)
         {
-            Logger.LogError(exception, "Unable to load the vehicle management page.");
-            _errorMessage = "Vehicle information could not be loaded. Please try again.";
+            Logger.LogError(exception, "Unable to load manufacturers.");
+            _manufacturerErrorMessage = exception is DbException
+                ? "Manufacturer choices could not be loaded from the database. Check that SQL Server is running and database setup completed, then reload the page."
+                : "Manufacturer choices are unavailable, so vehicles cannot be added right now. Reload the page to try again.";
         }
-        finally
-        {
-            _isLoading = false;
-        }
+
+        await LoadVehiclesAsync();
     }
 
     private async Task CreateVehicleAsync()
     {
+        if (_isSaving)
+        {
+            return;
+        }
+
         _isSaving = true;
-        _errorMessage = null;
-        _successMessage = null;
+        _saveErrorMessage = null;
+        _saveMessage = null;
+        _saveMessageIsWarning = false;
 
         try
         {
@@ -224,17 +244,27 @@
                 CurrentYear = _currentYear,
                 YearOfManufacture = _currentYear
             };
-            _successMessage = "Vehicle added successfully.";
-            await LoadVehiclesAsync();
+
+            if (await LoadVehiclesAsync())
+            {
+                _saveMessage = "Vehicle added successfully. The registered vehicles list is up to date.";
+            }
+            else
+            {
+                _saveMessageIsWarning = true;
+                _saveMessage = "Vehicle saved, but the registered vehicles list could not be refreshed. Select Apply to retry.";
+            }
         }
         catch (DomainValidationException exception)
         {
-            _errorMessage = exception.Message;
+            _saveErrorMessage = exception.Message;
         }
         catch (Exception exception)
         {
             Logger.LogError(exception, "Unable to create a vehicle.");
-            _errorMessage = "The vehicle could not be saved. Please try again.";
+            _saveErrorMessage = exception is DbException
+                ? "The database did not confirm whether the vehicle was saved. Check that SQL Server is running, then check the vehicle list before trying again. Your form has been kept."
+                : "The vehicle save could not be confirmed. Your form has been kept. Check the vehicle list before trying again; if the problem continues, contact an administrator.";
         }
         finally
         {
@@ -242,24 +272,58 @@
         }
     }
 
-    private async Task LoadVehiclesAsync()
+    private async Task RefreshVehiclesAsync()
+    {
+        if (!_saveMessageIsWarning)
+        {
+            _saveMessage = null;
+        }
+
+        if (await LoadVehiclesAsync() && _saveMessageIsWarning)
+        {
+            _saveMessageIsWarning = false;
+            _saveMessage = "Vehicle added successfully. The registered vehicles list is up to date.";
+        }
+    }
+
+    private async Task<bool> LoadVehiclesAsync()
     {
         _isLoading = true;
-        _errorMessage = null;
+        _listErrorMessage = null;
 
         try
         {
             _vehicles = await VehicleService.GetVehiclesAsync(_sortField, _descending);
+            _hasLoadedVehicles = true;
+            return true;
         }
         catch (Exception exception)
         {
             Logger.LogError(exception, "Unable to load vehicles.");
-            _errorMessage = "Vehicles could not be loaded. Please try again.";
+            _vehicles = Array.Empty<VehicleListItem>();
+            _hasLoadedVehicles = false;
+            _listErrorMessage = GetListErrorMessage(exception);
+            return false;
         }
         finally
         {
             _isLoading = false;
         }
+    }
+
+    private static string GetListErrorMessage(Exception exception)
+    {
+        return exception switch
+        {
+            CategoryConfigurationMissingException =>
+                "Vehicle categories have not been set up yet. Ask an administrator to complete category setup before loading the list.",
+            DomainValidationException =>
+                "A saved vehicle cannot be classified with the current category rules. Ask an administrator to check its weight and the category boundaries.",
+            DbException =>
+                "The database could not load the vehicle list. Check that SQL Server is running and database setup completed, then select Apply to retry.",
+            _ =>
+                "The registered vehicles list is unavailable right now. Select Apply to retry. If the problem continues, contact an administrator."
+        };
     }
 
     private static string GetCategoryIcon(string iconKey)

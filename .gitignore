@@ -11,6 +11,7 @@
 *.sln.docstates
 *.env
 .sqlserver-password
+.sqlserver-port
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -50,6 +51,7 @@ bld/
 
 # Build results on 'Bin' directories
 **/[Bb]in/*
+**/bin\\Debug/
 # Uncomment if you have tasks that rely on *.refresh files to move binaries
 # (https://github.com/github/gitignore/pull/3736)
 #!**/[Bb]in/*.refresh
