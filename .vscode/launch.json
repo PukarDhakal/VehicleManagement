@@ -9,6 +9,7 @@
       "program": "${workspaceFolder}/src/VehicleManagement.Web/bin/Debug/net10.0/VehicleManagement.Web.dll",
       "cwd": "${workspaceFolder}/src/VehicleManagement.Web",
       "launchSettingsProfile": "http",
+      "envFile": "${workspaceFolder}/.env",
       "console": "internalConsole",
       "stopAtEntry": false,
       "serverReadyAction": {
