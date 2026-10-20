@@ -39,6 +39,9 @@ public sealed class VehicleManagementDbContext : DbContext
         builder.Property(configuration => configuration.RowVersion)
             .IsRowVersion();
 
+        builder.Property(configuration => configuration.Revision)
+            .HasDefaultValue(0L);
+
         builder.HasMany(configuration => configuration.Categories)
             .WithOne()
             .HasForeignKey("CategoryConfigurationId")

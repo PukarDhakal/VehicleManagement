@@ -196,6 +196,14 @@ public sealed class VehicleApplicationServiceTests
             GetCallCount++;
             return Task.FromResult(_configuration);
         }
+
+        public Task<CategoryConfiguration> SaveAsync(
+            byte[] expectedRowVersion,
+            IReadOnlyList<CategoryChange> changes,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
     }
 
     private sealed class FixedTimeProvider : TimeProvider
