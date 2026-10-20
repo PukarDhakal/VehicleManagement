@@ -77,5 +77,47 @@ dotnet tool run dotnet-ef database update \
     --project src/VehicleManagement.Infrastructure \
     --startup-project src/VehicleManagement.Infrastructure
 
+# VS Code starts the web app in a new process, so it needs its own saved environment.
+envFile="$PWD/.env"
+if [[ -L "$envFile" ]]; then
+    echo "The local .env file must not be a symbolic link." >&2
+    exit 1
+fi
+if [[ -e "$envFile" && ! -f "$envFile" ]]; then
+    echo "The local .env path must be a regular file." >&2
+    exit 1
+fi
+if [[ "$ConnectionStrings__VehicleManagement" == *$'\n'* || "$ConnectionStrings__VehicleManagement" == *$'\r'* ]]; then
+    echo "The SQL Server password cannot contain a newline when used with VS Code's .env file." >&2
+    exit 1
+fi
+
+envTemp="$(mktemp "$PWD/.env.XXXXXX")"
+trap 'rm -f "$envTemp"' EXIT
+if [[ -f "$envFile" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" =~ ^[[:space:]]*(export[[:space:]]+)?(ConnectionStrings__VehicleManagement|MSSQL_HOST_PORT)[[:space:]]*= ]]; then
+            continue
+        fi
+        printf '%s\n' "$line" >> "$envTemp"
+    done < "$envFile"
+fi
+
+printf 'MSSQL_HOST_PORT=%s\n' "$MSSQL_HOST_PORT" >> "$envTemp"
+if [[ "$ConnectionStrings__VehicleManagement" == *'#'* ]]; then
+    if [[ "$ConnectionStrings__VehicleManagement" == *"'"* ]]; then
+        escapedEnvConnection="${ConnectionStrings__VehicleManagement//\\/\\\\}"
+        escapedEnvConnection="${escapedEnvConnection//\"/\\\"}"
+        printf 'ConnectionStrings__VehicleManagement="%s"\n' "$escapedEnvConnection" >> "$envTemp"
+    else
+        printf "ConnectionStrings__VehicleManagement='%s'\n" "$ConnectionStrings__VehicleManagement" >> "$envTemp"
+    fi
+else
+    printf 'ConnectionStrings__VehicleManagement=%s\n' "$ConnectionStrings__VehicleManagement" >> "$envTemp"
+fi
+chmod 600 "$envTemp"
+mv "$envTemp" "$envFile"
+trap - EXIT
+
 docker compose ps sqlserver
-echo "VehicleManagement database is ready."
+echo "VehicleManagement database is ready. VS Code can now load its connection from .env."
