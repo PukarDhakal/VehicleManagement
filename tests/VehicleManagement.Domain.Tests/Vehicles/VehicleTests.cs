@@ -30,6 +30,8 @@ public sealed class VehicleTests
     }
 
     [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
     [InlineData(1799)]
     [InlineData(2028)]
     public void CreateRejectsOutOfRangeManufactureYear(int yearOfManufacture)
@@ -74,6 +76,31 @@ public sealed class VehicleTests
 
         Assert.Throws<DomainValidationException>(() =>
             Vehicle.Create(ownerName, 1, 2020, 1m, 2026));
+    }
+
+    [Theory]
+    [InlineData("Alex123")]
+    [InlineData("123")]
+    [InlineData("Alex_Driver")]
+    public void CreateRejectsOwnerNameWithNumbersOrUnsupportedCharacters(string ownerName)
+    {
+        Assert.Throws<DomainValidationException>(() =>
+            Vehicle.Create(ownerName, 1, 2020, 1m, 2026));
+    }
+
+    [Theory]
+    [InlineData("Alex Driver")]
+    [InlineData("Test Name")]
+    [InlineData("Test  Name")]
+    [InlineData("Alex O'Neil")]
+    [InlineData("Mary-Jane Smith")]
+    [InlineData("Dr. Alex Smith")]
+    [InlineData("José García")]
+    public void CreateAcceptsCommonOwnerNameCharacters(string ownerName)
+    {
+        var vehicle = Vehicle.Create(ownerName, 1, 2020, 1m, 2026);
+
+        Assert.Equal(ownerName, vehicle.OwnerName);
     }
 
     [Theory]

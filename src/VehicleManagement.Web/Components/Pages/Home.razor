@@ -1,26 +1,329 @@
-﻿@page "/"
+@page "/"
+@using System.ComponentModel.DataAnnotations
+@using VehicleManagement.Application.Vehicles
+@using VehicleManagement.Domain
+@using VehicleManagement.Domain.Vehicles
+@inject VehicleApplicationService VehicleService
+@inject TimeProvider TimeProvider
+@inject ILogger<Home> Logger
 
 <PageTitle>Vehicle Management</PageTitle>
 
-<main class="home">
-    <header class="home-header">
-        <h1>Vehicle Management</h1>
-        <p>Manage vehicle details and organise vehicles into categories based on their weight.</p>
+<main class="vehicle-page">
+    <header class="page-header">
+        <div>
+            <p class="eyebrow">CreditWorks vehicle register</p>
+            <h1>Vehicle Management</h1>
+            <p class="introduction">
+                Add vehicles and see their current category based on weight.
+            </p>
+        </div>
+        <div class="vehicle-total" aria-label="Total vehicles">
+            <strong>@_vehicles.Count</strong>
+            <span>@(_vehicles.Count == 1 ? "vehicle" : "vehicles")</span>
+        </div>
     </header>
 
-    <p class="availability">Vehicle and category management will be available soon.</p>
+    @if (!string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <div class="message error-message" role="alert">@_errorMessage</div>
+    }
 
-    <div class="feature-grid">
-        <section class="feature" aria-labelledby="vehicles-heading">
-            <h2 id="vehicles-heading">Vehicles</h2>
-            <p>Record the owner, manufacturer, year of manufacture and weight of each vehicle.</p>
-            <p>Browse vehicle records and sort by owner, manufacturer, year or weight.</p>
+    @if (!string.IsNullOrWhiteSpace(_successMessage))
+    {
+        <div class="message success-message" role="status">@_successMessage</div>
+    }
+
+    <div class="content-grid">
+        <section class="panel create-panel" aria-labelledby="create-heading">
+            <div class="panel-heading">
+                <div>
+                    <h2 id="create-heading">Add a vehicle</h2>
+                    <p>Record the vehicle details below.</p>
+                </div>
+            </div>
+
+            <EditForm Model="_form"
+                      OnValidSubmit="CreateVehicleAsync"
+                      FormName="create-vehicle"
+                      novalidate>
+                <DataAnnotationsValidator />
+
+                <div class="form-field">
+                    <label for="owner-name">Owner name</label>
+                    <InputText id="owner-name" @bind-Value="_form.OwnerName" maxlength="150" />
+                </div>
+
+                <div class="form-field">
+                    <label for="manufacturer">Manufacturer</label>
+                    <InputSelect id="manufacturer" @bind-Value="_form.ManufacturerId">
+                        <option value="0">Select a manufacturer</option>
+                        @foreach (var manufacturer in _manufacturers)
+                        {
+                            <option value="@manufacturer.Id">@manufacturer.Name</option>
+                        }
+                    </InputSelect>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-field">
+                        <label for="manufacture-year">Year of manufacture</label>
+                        <InputNumber id="manufacture-year"
+                                     @bind-Value="_form.YearOfManufacture"
+                                     min="1800"
+                                     max="@(_currentYear + 1)"
+                                     ParsingErrorMessage="Enter a valid manufacture year." />
+                    </div>
+
+                    <div class="form-field">
+                        <label for="vehicle-weight">Weight in kilograms</label>
+                        <InputNumber id="vehicle-weight"
+                                     @bind-Value="_form.WeightKg"
+                                     min="0.01"
+                                     max="99999999.99"
+                                     step="0.01"
+                                     ParsingErrorMessage="Enter a valid positive weight." />
+                    </div>
+                </div>
+
+                <button class="primary-button" type="submit" disabled="@(_isSaving || _isLoading)">
+                    @(_isSaving ? "Saving..." : "Add vehicle")
+                </button>
+
+                <div class="form-validation-summary" aria-live="polite">
+                    <ValidationSummary />
+                </div>
+            </EditForm>
         </section>
 
-        <section class="feature" aria-labelledby="categories-heading">
-            <h2 id="categories-heading">Categories</h2>
-            <p>Manage category names, weight boundaries and icons.</p>
-            <p>Each vehicle's category is determined by its weight and the current category configuration.</p>
+        <section class="panel list-panel" aria-labelledby="vehicles-heading">
+            <div class="panel-heading list-heading">
+                <div class="heading-copy">
+                    <div>
+                        <h2 id="vehicles-heading">Registered vehicles</h2>
+                        <p>Categories are calculated from the current weight boundaries.</p>
+                    </div>
+                </div>
+
+                <div class="sort-controls" aria-label="Vehicle sorting controls">
+                    <label for="sort-field">Sort by</label>
+                    <select id="sort-field" @bind="_sortField">
+                        <option value="@VehicleSortField.OwnerName">Owner</option>
+                        <option value="@VehicleSortField.Manufacturer">Manufacturer</option>
+                        <option value="@VehicleSortField.YearOfManufacture">Year</option>
+                        <option value="@VehicleSortField.WeightKg">Weight</option>
+                    </select>
+
+                    <label class="direction-control">
+                        <input type="checkbox" @bind="_descending" />
+                        Descending
+                    </label>
+
+                    <button class="secondary-button" type="button" @onclick="LoadVehiclesAsync" disabled="@_isLoading">
+                        Apply
+                    </button>
+                </div>
+            </div>
+
+            @if (_isLoading)
+            {
+                <p class="empty-state" role="status">Loading vehicles...</p>
+            }
+            else if (_vehicles.Count == 0)
+            {
+                <p class="empty-state">No vehicles have been added yet.</p>
+            }
+            else
+            {
+                <div class="table-wrapper">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th scope="col">Owner</th>
+                                <th scope="col">Manufacturer</th>
+                                <th scope="col">Year</th>
+                                <th scope="col">Weight</th>
+                                <th scope="col">Category</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var vehicle in _vehicles)
+                            {
+                                <tr>
+                                    <td data-label="Owner">@vehicle.OwnerName</td>
+                                    <td data-label="Manufacturer">@vehicle.ManufacturerName</td>
+                                    <td data-label="Year">@vehicle.YearOfManufacture</td>
+                                    <td data-label="Weight">@vehicle.WeightKg.ToString("N2") kg</td>
+                                    <td data-label="Category">
+                                        <span class="category-badge">
+                                            <span aria-hidden="true">@GetCategoryIcon(vehicle.CategoryIconKey)</span>
+                                            @vehicle.CategoryName
+                                        </span>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
         </section>
     </div>
 </main>
+
+@code {
+    private IReadOnlyList<Manufacturer> _manufacturers = Array.Empty<Manufacturer>();
+    private IReadOnlyList<VehicleListItem> _vehicles = Array.Empty<VehicleListItem>();
+    private VehicleFormModel _form = new();
+    private VehicleSortField _sortField = VehicleSortField.OwnerName;
+    private bool _descending;
+    private bool _isLoading = true;
+    private bool _isSaving;
+    private int _currentYear;
+    private string? _errorMessage;
+    private string? _successMessage;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _currentYear = TimeProvider.GetUtcNow().Year;
+        _form.CurrentYear = _currentYear;
+        _form.YearOfManufacture = _currentYear;
+
+        try
+        {
+            _manufacturers = await VehicleService.GetManufacturersAsync();
+            _vehicles = await VehicleService.GetVehiclesAsync(_sortField, _descending);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Unable to load the vehicle management page.");
+            _errorMessage = "Vehicle information could not be loaded. Please try again.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task CreateVehicleAsync()
+    {
+        _isSaving = true;
+        _errorMessage = null;
+        _successMessage = null;
+
+        try
+        {
+            var request = new CreateVehicleRequest(
+                _form.OwnerName,
+                _form.ManufacturerId,
+                _form.YearOfManufacture,
+                _form.WeightKg);
+
+            await VehicleService.CreateVehicleAsync(request);
+            _form = new VehicleFormModel
+            {
+                CurrentYear = _currentYear,
+                YearOfManufacture = _currentYear
+            };
+            _successMessage = "Vehicle added successfully.";
+            await LoadVehiclesAsync();
+        }
+        catch (DomainValidationException exception)
+        {
+            _errorMessage = exception.Message;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Unable to create a vehicle.");
+            _errorMessage = "The vehicle could not be saved. Please try again.";
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private async Task LoadVehiclesAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            _vehicles = await VehicleService.GetVehiclesAsync(_sortField, _descending);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Unable to load vehicles.");
+            _errorMessage = "Vehicles could not be loaded. Please try again.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static string GetCategoryIcon(string iconKey)
+    {
+        switch (iconKey)
+        {
+            case "car":
+                return "🚗";
+            case "van":
+                return "🚐";
+            case "truck":
+                return "🚚";
+            default:
+                return "●";
+        }
+    }
+
+    private sealed class VehicleFormModel : IValidatableObject
+    {
+        [Required(ErrorMessage = "Please enter a valid name.")]
+        [StringLength(150, ErrorMessage = "Please enter a valid name.")]
+        [RegularExpression(
+            Vehicle.OwnerNamePattern,
+            ErrorMessage = "Please enter a valid name.")]
+        public string OwnerName { get; set; } = string.Empty;
+
+        [Range(1, int.MaxValue, ErrorMessage = "Select a manufacturer.")]
+        public int ManufacturerId { get; set; }
+
+        public int CurrentYear { get; set; }
+
+        [Range(1800, 9999, ErrorMessage = "Enter a year from 1800 onwards.")]
+        public int YearOfManufacture { get; set; }
+
+        public decimal WeightKg { get; set; }
+
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        {
+            var latestAllowedYear = CurrentYear + 1;
+            if (YearOfManufacture > latestAllowedYear)
+            {
+                yield return new ValidationResult(
+                    $"Enter a year no later than {latestAllowedYear}.",
+                    new[] { nameof(YearOfManufacture) });
+            }
+
+            if (WeightKg <= 0)
+            {
+                yield return new ValidationResult(
+                    "Weight must be greater than 0 kg.",
+                    new[] { nameof(WeightKg) });
+            }
+            else if (WeightKg > 99_999_999.99m)
+            {
+                yield return new ValidationResult(
+                    "Weight cannot exceed 99,999,999.99 kg.",
+                    new[] { nameof(WeightKg) });
+            }
+            else if (decimal.Round(WeightKg, 2) != WeightKg)
+            {
+                yield return new ValidationResult(
+                    "Weight can have no more than two decimal places.",
+                    new[] { nameof(WeightKg) });
+            }
+        }
+    }
+}
