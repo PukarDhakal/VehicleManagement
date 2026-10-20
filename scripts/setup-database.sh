@@ -3,10 +3,42 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
-if [[ -z "${MSSQL_SA_PASSWORD:-}" ]]; then
-    echo "Set MSSQL_SA_PASSWORD to a strong development password before running this script." >&2
+passwordFile="$PWD/.sqlserver-password"
+umask 077
+
+if [[ -L "$passwordFile" ]]; then
+    echo "The local SQL Server password file must not be a symbolic link." >&2
     exit 1
 fi
+
+if [[ -f "$passwordFile" ]]; then
+    storedPassword="$(cat "$passwordFile")"
+    if [[ -z "$storedPassword" ]]; then
+        echo "The local SQL Server password file is empty." >&2
+        exit 1
+    fi
+
+    if [[ -n "${MSSQL_SA_PASSWORD:-}" && "$MSSQL_SA_PASSWORD" != "$storedPassword" ]]; then
+        echo "MSSQL_SA_PASSWORD differs from the saved local password. Unset it or restore the matching password file." >&2
+        exit 1
+    fi
+
+    MSSQL_SA_PASSWORD="$storedPassword"
+else
+    if [[ -z "${MSSQL_SA_PASSWORD:-}" ]]; then
+        if ! command -v openssl >/dev/null 2>&1; then
+            echo "OpenSSL is required to generate a local SQL Server password." >&2
+            exit 1
+        fi
+
+        MSSQL_SA_PASSWORD="Vm1!$(openssl rand -hex 24)"
+    fi
+
+    printf '%s' "$MSSQL_SA_PASSWORD" > "$passwordFile"
+fi
+
+chmod 600 "$passwordFile"
+export MSSQL_SA_PASSWORD
 
 # The connection string quotes its password so delimiters remain part of the password.
 escapedPassword="${MSSQL_SA_PASSWORD//\"/\"\"}"
@@ -19,4 +51,5 @@ dotnet tool run dotnet-ef database update \
     --project src/VehicleManagement.Infrastructure \
     --startup-project src/VehicleManagement.Infrastructure
 
+docker compose ps sqlserver
 echo "VehicleManagement database is ready."
