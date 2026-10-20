@@ -1,0 +1,239 @@
+.category-page {
+    max-width: 78rem;
+    margin: 0 auto;
+    padding: clamp(1.5rem, 4vw, 3rem) 1.25rem 4rem;
+    color: #172033;
+}
+
+.page-header {
+    margin-bottom: 1.5rem;
+}
+
+.eyebrow {
+    margin: 0 0 0.4rem;
+    color: #315bdb;
+    font-size: 0.75rem;
+    font-weight: 750;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+h1,
+h2,
+h3,
+p {
+    margin-top: 0;
+}
+
+h1 {
+    margin-bottom: 0.65rem;
+    font-size: clamp(2rem, 5vw, 2.8rem);
+    letter-spacing: -0.035em;
+}
+
+h2 {
+    margin-bottom: 0.3rem;
+    font-size: 1.3rem;
+}
+
+h3 {
+    margin-bottom: 0;
+    font-size: 1.05rem;
+}
+
+.page-header p:last-child,
+.editor-heading p,
+.range-hint {
+    color: #667085;
+}
+
+.message,
+.loading-state {
+    margin-bottom: 1rem;
+    padding: 0.85rem 1rem;
+    border-radius: 0.6rem;
+}
+
+.error-message {
+    border: 1px solid #f1b4b4;
+    background: #fff2f2;
+    color: #8f2020;
+}
+
+.success-message {
+    border: 1px solid #a9d8bd;
+    background: #effaf3;
+    color: #176438;
+}
+
+.reload-state {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    color: #52617a;
+}
+
+.loading-state {
+    color: #52617a;
+}
+
+.category-page ::deep form {
+    display: grid;
+    gap: 1rem;
+}
+
+.editor-heading,
+.category-card-heading,
+.confirmation-actions,
+.row-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.editor-heading,
+.category-card-heading {
+    justify-content: space-between;
+}
+
+.editor-heading p {
+    margin-bottom: 0;
+}
+
+.category-card {
+    padding: 1.25rem;
+    border: 1px solid #d8deea;
+    border-radius: 0.75rem;
+    background: #fff;
+    box-shadow: 0 0.35rem 1.2rem rgba(25, 38, 68, 0.05);
+}
+
+.category-card-heading {
+    margin-bottom: 1.25rem;
+}
+
+.category-fields {
+    display: grid;
+    grid-template-columns: minmax(12rem, 1.5fr) minmax(9rem, 1fr) minmax(11rem, 1fr);
+    gap: 1rem;
+}
+
+.form-field {
+    display: grid;
+    gap: 0.45rem;
+    min-width: 0;
+}
+
+label {
+    color: #2d3748;
+    font-size: 0.85rem;
+    font-weight: 650;
+}
+
+.form-field ::deep input,
+.form-field ::deep select {
+    width: 100%;
+    min-width: 0;
+    min-height: 2.7rem;
+    padding: 0.55rem 0.7rem;
+    border: 1px solid #bfc8d6;
+    border-radius: 0.5rem;
+    background: #fff;
+    color: #172033;
+    font: inherit;
+}
+
+.form-field ::deep input:focus,
+.form-field ::deep select:focus,
+button:focus-visible {
+    outline: 3px solid rgba(49, 91, 219, 0.35);
+    outline-offset: 1px;
+}
+
+.range-hint {
+    margin: 0.85rem 0 0;
+    font-size: 0.85rem;
+}
+
+.primary-button,
+.secondary-button,
+.text-button {
+    min-height: 2.5rem;
+    border-radius: 0.5rem;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.primary-button {
+    padding: 0.55rem 1rem;
+    border: 1px solid #244bc5;
+    background: #315bdb;
+    color: #fff;
+}
+
+.secondary-button {
+    padding: 0.55rem 0.85rem;
+    border: 1px solid #cbd3df;
+    background: #fff;
+    color: #283650;
+}
+
+.text-button {
+    min-height: 2rem;
+    padding: 0.25rem;
+    border: 0;
+    background: transparent;
+    color: #2947a3;
+}
+
+.delete-button {
+    color: #a52a2a;
+}
+
+button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.save-button {
+    justify-self: start;
+}
+
+.confirmation-panel {
+    padding: 1.25rem;
+    border: 1px solid #e6cb85;
+    border-radius: 0.75rem;
+    background: #fff8e8;
+}
+
+.confirmation-panel p {
+    margin-bottom: 0.65rem;
+}
+
+.form-validation-summary ::deep ul {
+    margin: 0;
+    padding: 0.75rem 0.75rem 0.75rem 2rem;
+    border: 1px solid #f1b4b4;
+    border-radius: 0.5rem;
+    background: #fff2f2;
+    color: #a52a2a;
+}
+
+@media (max-width: 48rem) {
+    .editor-heading,
+    .category-card-heading,
+    .reload-state {
+        align-items: start;
+        flex-direction: column;
+    }
+
+    .category-fields {
+        grid-template-columns: 1fr;
+    }
+
+    .row-actions {
+        flex-wrap: wrap;
+    }
+}

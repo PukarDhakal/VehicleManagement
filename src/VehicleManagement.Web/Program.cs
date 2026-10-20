@@ -18,6 +18,7 @@ builder.Services.AddPooledDbContextFactory<VehicleManagementDbContext>(options =
     options.UseSqlServer(connectionString));
 
 builder.Services.AddScoped<ICategoryConfigurationRepository, CategoryConfigurationRepository>();
+builder.Services.AddScoped<CategoryManagementService>();
 builder.Services.AddScoped<IManufacturerRepository, ManufacturerRepository>();
 builder.Services.AddScoped<IVehicleRepository, VehicleRepository>();
 builder.Services.AddScoped<VehicleApplicationService>();

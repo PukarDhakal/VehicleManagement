@@ -1,3 +1,48 @@
+.app-nav-shell {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    border-bottom: 1px solid #d8deea;
+    background: #fff;
+    box-shadow: 0 2px 8px rgba(25, 38, 68, 0.05);
+}
+
+.app-nav {
+    display: flex;
+    gap: 0.5rem;
+    max-width: 78rem;
+    margin: 0 auto;
+    padding: 0.65rem 1.25rem;
+}
+
+.app-nav ::deep a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.5rem;
+    padding: 0.5rem 0.85rem;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    color: #394761;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.app-nav ::deep a:hover {
+    background: #f0f3fa;
+    color: #244bc5;
+}
+
+.app-nav ::deep a.active {
+    border-color: #c6d2f8;
+    background: #e8eeff;
+    color: #244bc5;
+}
+
+.app-nav ::deep a:focus-visible {
+    outline: 3px solid #315bdb;
+    outline-offset: 2px;
+}
+
 #blazor-error-ui {
     background: lightyellow;
     bottom: 0;

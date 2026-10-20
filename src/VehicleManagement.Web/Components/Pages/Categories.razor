@@ -1,0 +1,412 @@
+@page "/categories"
+@implements IDisposable
+@using System.Data.Common
+@using VehicleManagement.Application.Categories
+@using VehicleManagement.Domain
+@using VehicleManagement.Domain.Categories
+@inject CategoryManagementService CategoryService
+@inject ILogger<Categories> Logger
+
+<PageTitle>Manage Categories</PageTitle>
+
+<main class="category-page">
+    <header class="page-header">
+        <p class="eyebrow">CreditWorks vehicle register</p>
+        <h1>Manage categories</h1>
+        <p>Set each category's minimum vehicle weight. The next minimum becomes its upper boundary.</p>
+    </header>
+
+    @if (_errorMessage is not null)
+    {
+        <div class="message error-message" role="alert">
+            @_errorMessage
+            @if (_showReload)
+            {
+                <button type="button" class="text-button" @onclick="LoadCategoriesAsync">Reload categories</button>
+            }
+        </div>
+    }
+    else if (_showReload)
+    {
+        <div class="reload-state" role="status">
+            <span>Reload categories before continuing.</span>
+            <button type="button" class="text-button" @onclick="LoadCategoriesAsync">Reload categories</button>
+        </div>
+    }
+
+    @if (_successMessage is not null)
+    {
+        <div class="message success-message" role="status">@_successMessage</div>
+    }
+
+    @if (_isLoading)
+    {
+        <p class="loading-state" role="status">Loading categories...</p>
+    }
+    else if (_editor is not null)
+    {
+        <EditForm EditContext="_editContext" OnSubmit="SaveCategoriesAsync" FormName="manage-categories" novalidate>
+            <DataAnnotationsValidator />
+
+            <div class="editor-heading">
+                <div>
+                    <h2>Weight categories</h2>
+                    <p>Categories must start at 0 kg and increase in the order shown.</p>
+                </div>
+                <button type="button" class="secondary-button" @onclick="AddCategory" disabled="@_isSaving">Add category</button>
+            </div>
+
+            @for (var index = 0; index < _editor.Rows.Count; index++)
+            {
+                var row = _editor.Rows[index];
+                var suffix = row.Key.ToString("N");
+
+                <section class="category-card" @key="row.Key" aria-labelledby="@($"category-heading-{suffix}")">
+                    <div class="category-card-heading">
+                        <h3 id="@($"category-heading-{suffix}")">Category @(index + 1)</h3>
+                        <div class="row-actions">
+                            <button type="button" class="text-button" @onclick="() => MoveCategory(row, -1)" disabled="@(index == 0 || _isSaving)">Move up</button>
+                            <button type="button" class="text-button" @onclick="() => MoveCategory(row, 1)" disabled="@(index == _editor.Rows.Count - 1 || _isSaving)">Move down</button>
+                            <button type="button" class="text-button delete-button" @onclick="() => RemoveCategory(row)" disabled="@(_editor.Rows.Count == 1 || _isSaving)">Delete</button>
+                        </div>
+                    </div>
+
+                    <div class="category-fields">
+                        <div class="form-field">
+                            <label for="@($"category-name-{suffix}")">Name</label>
+                            <InputText id="@($"category-name-{suffix}")" @bind-Value="row.Name" maxlength="100" disabled="@_isSaving" />
+                        </div>
+                        <div class="form-field">
+                            <label for="@($"category-icon-{suffix}")">Icon</label>
+                            <InputSelect id="@($"category-icon-{suffix}")" @bind-Value="row.IconKey" disabled="@_isSaving">
+                                <option value="car">Car</option>
+                                <option value="van">Van</option>
+                                <option value="truck">Truck</option>
+                            </InputSelect>
+                        </div>
+                        <div class="form-field">
+                            <label for="@($"category-minimum-{suffix}")">Minimum weight (kg)</label>
+                            <InputNumber id="@($"category-minimum-{suffix}")"
+                                         @bind-Value="row.MinWeightKg"
+                                         min="0"
+                                         max="99999999.99"
+                                         step="0.01"
+                                         disabled="@_isSaving"
+                                         ParsingErrorMessage="Enter a valid weight." />
+                        </div>
+                    </div>
+
+                    <p class="range-hint">@GetRangeHint(index)</p>
+                </section>
+            }
+
+            <div class="form-validation-summary" aria-live="polite"><ValidationSummary /></div>
+
+            @if (_confirmationToken.HasValue)
+            {
+                <section class="confirmation-panel" aria-labelledby="confirmation-heading">
+                    <h2 id="confirmation-heading">Confirm category changes</h2>
+                    <p>
+                        About @_affectedVehicleCount vehicles would move to a different category.
+                        This count is an estimate from the time of checking.
+                    </p>
+                    <p>If you edit the proposal, it will be checked again before saving.</p>
+                    <div class="confirmation-actions">
+                        <button type="button" class="primary-button" @onclick="ConfirmSaveAsync" disabled="@_isSaving">Yes, save changes</button>
+                        <button type="button" class="secondary-button" @onclick="CancelConfirmation" disabled="@_isSaving">Cancel</button>
+                    </div>
+                </section>
+            }
+            else
+            {
+                <button type="submit" class="primary-button save-button" disabled="@_isSaving">
+                    @(_isSaving ? "Saving..." : "Save categories")
+                </button>
+            }
+        </EditForm>
+    }
+</main>
+
+@code {
+    private static readonly TimeSpan SuccessNoticeDuration = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ErrorNoticeDuration = TimeSpan.FromSeconds(8);
+
+    private CategoryEditor? _editor;
+    private EditContext? _editContext;
+    private byte[] _rowVersion = [];
+    private bool _isLoading = true;
+    private bool _isSaving;
+    private bool _showReload;
+    private string? _errorMessage;
+    private string? _successMessage;
+    private Guid? _confirmationToken;
+    private int _affectedVehicleCount;
+    private CancellationTokenSource? _noticeCancellation;
+
+    protected override Task OnInitializedAsync() => LoadCategoriesAsync();
+
+    private async Task LoadCategoriesAsync()
+    {
+        _isLoading = true;
+        ClearNotice();
+        _showReload = false;
+        CancelConfirmation();
+
+        try
+        {
+            var configuration = await CategoryService.GetAsync()
+                ?? throw new CategoryConfigurationMissingException();
+            SetEditor(configuration);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Unable to load categories.");
+            _editor = null;
+            ShowError(exception is CategoryConfigurationMissingException
+                ? "Categories have not been set up. Run database setup, then reload this page."
+                : "Categories could not be loaded. Check the database connection, then reload this page.");
+            _showReload = true;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task SaveCategoriesAsync(EditContext editContext)
+    {
+        if (_isSaving || !editContext.Validate())
+        {
+            return;
+        }
+
+        await SubmitAsync(null);
+    }
+
+    private Task ConfirmSaveAsync() => _editContext?.Validate() == true
+        ? SubmitAsync(_confirmationToken)
+        : Task.CompletedTask;
+
+    private async Task SubmitAsync(Guid? confirmationToken)
+    {
+        if (_isSaving || _editor is null)
+        {
+            return;
+        }
+
+        _isSaving = true;
+        ClearNotice();
+        _showReload = false;
+
+        try
+        {
+            var changes = _editor.Rows.Select((row, index) =>
+                new CategoryChange(row.Id, row.Name, row.IconKey, index + 1, row.MinWeightKg)).ToArray();
+            var result = await CategoryService.SaveAsync(_rowVersion, changes, confirmationToken);
+
+            if (result.RequiresConfirmation)
+            {
+                _confirmationToken = result.ConfirmationToken;
+                _affectedVehicleCount = result.AffectedVehicleCount;
+                return;
+            }
+
+            SetEditor(result.SavedConfiguration!);
+            _confirmationToken = null;
+            if (result.ConfigurationChanged)
+            {
+                var impact = result.AffectedVehicleCount == 0
+                    ? string.Empty
+                    : $" {result.AffectedVehicleCount} " +
+                        (result.AffectedVehicleCount == 1 ? "vehicle changes" : "vehicles change") + " category.";
+                ShowSuccess($"Categories saved.{impact} Refresh the vehicle list to see the current categories.");
+            }
+        }
+        catch (DomainValidationException exception)
+        {
+            CancelConfirmation();
+            ShowError(exception.Message);
+        }
+        catch (CategoryConfigurationConflictException)
+        {
+            CancelConfirmation();
+            ShowError("Categories changed in another session. Your edits are still here; reload before saving again.");
+            _showReload = true;
+        }
+        catch (CategoryConfigurationMissingException)
+        {
+            CancelConfirmation();
+            ShowError("Categories have not been set up. Run database setup before saving changes.");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Unable to save categories.");
+            CancelConfirmation();
+            ShowError(exception is DbException
+                ? "The database did not confirm the category save. Reload to check before trying again."
+                : "The category save could not be confirmed. Reload to check before trying again.");
+            _showReload = true;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+    }
+
+    private void SetEditor(CategoryConfiguration configuration)
+    {
+        _rowVersion = configuration.RowVersion.ToArray();
+        _editor = new CategoryEditor();
+        foreach (var category in configuration.Categories.OrderBy(item => item.SortOrder))
+        {
+            _editor.Rows.Add(new CategoryRow
+            {
+                Id = category.Id,
+                Name = category.Name,
+                IconKey = category.IconKey,
+                MinWeightKg = category.MinWeightKg
+            });
+        }
+
+        _editContext = new EditContext(_editor);
+    }
+
+    private void AddCategory()
+    {
+        if (_editor is null)
+        {
+            return;
+        }
+
+        var lastMinimum = _editor.Rows[^1].MinWeightKg;
+        _editor.Rows.Add(new CategoryRow
+        {
+            Name = string.Empty,
+            IconKey = "car",
+            MinWeightKg = Math.Min(lastMinimum + 100m, 99_999_999.99m)
+        });
+        _editContext = new EditContext(_editor);
+        CancelConfirmation();
+    }
+
+    private void RemoveCategory(CategoryRow row)
+    {
+        if (_editor is { Rows.Count: > 1 })
+        {
+            _editor.Rows.Remove(row);
+            _editContext = new EditContext(_editor);
+            CancelConfirmation();
+        }
+    }
+
+    private void MoveCategory(CategoryRow row, int direction)
+    {
+        if (_editor is null)
+        {
+            return;
+        }
+
+        var index = _editor.Rows.IndexOf(row);
+        var target = index + direction;
+        if (index < 0 || target < 0 || target >= _editor.Rows.Count)
+        {
+            return;
+        }
+
+        (_editor.Rows[index], _editor.Rows[target]) = (_editor.Rows[target], _editor.Rows[index]);
+        _editContext = new EditContext(_editor);
+        CancelConfirmation();
+    }
+
+    private void CancelConfirmation()
+    {
+        CategoryService.CancelPendingConfirmation();
+        _confirmationToken = null;
+        _affectedVehicleCount = 0;
+    }
+
+    private void ShowSuccess(string message)
+    {
+        ClearNotice();
+        _successMessage = message;
+        ScheduleNoticeDismissal(SuccessNoticeDuration);
+    }
+
+    private void ShowError(string message)
+    {
+        ClearNotice();
+        _errorMessage = message;
+        ScheduleNoticeDismissal(ErrorNoticeDuration);
+    }
+
+    private void ClearNotice()
+    {
+        _noticeCancellation?.Cancel();
+        _noticeCancellation = null;
+        _errorMessage = null;
+        _successMessage = null;
+    }
+
+    private void ScheduleNoticeDismissal(TimeSpan duration)
+    {
+        var cancellation = new CancellationTokenSource();
+        _noticeCancellation = cancellation;
+        _ = DismissNoticeAsync(duration, cancellation);
+    }
+
+    private async Task DismissNoticeAsync(TimeSpan duration, CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await Task.Delay(duration, cancellation.Token);
+            await InvokeAsync(() =>
+            {
+                if (_noticeCancellation != cancellation)
+                {
+                    return;
+                }
+
+                _noticeCancellation = null;
+                _errorMessage = null;
+                _successMessage = null;
+                StateHasChanged();
+            });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            cancellation.Dispose();
+        }
+    }
+
+    public void Dispose() => ClearNotice();
+
+    private string GetRangeHint(int index)
+    {
+        if (_editor is null)
+        {
+            return string.Empty;
+        }
+
+        var minimum = _editor.Rows[index].MinWeightKg.ToString("N2");
+        return index + 1 < _editor.Rows.Count
+            ? $"From {minimum} kg up to (but not including) {_editor.Rows[index + 1].MinWeightKg:N2} kg"
+            : $"From {minimum} kg and above";
+    }
+
+    private sealed class CategoryEditor
+    {
+        public List<CategoryRow> Rows { get; } = [];
+    }
+
+    private sealed class CategoryRow
+    {
+        public Guid Key { get; } = Guid.NewGuid();
+        public int? Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string IconKey { get; set; } = "car";
+        public decimal MinWeightKg { get; set; }
+    }
+}

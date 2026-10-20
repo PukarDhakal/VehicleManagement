@@ -1,4 +1,5 @@
 @page "/"
+@implements IDisposable
 @using System.ComponentModel.DataAnnotations
 @using System.Data.Common
 @using VehicleManagement.Application.Categories
@@ -182,6 +183,9 @@
 </main>
 
 @code {
+    private static readonly TimeSpan SuccessNoticeDuration = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan ErrorNoticeDuration = TimeSpan.FromSeconds(8);
+
     private IReadOnlyList<Manufacturer> _manufacturers = Array.Empty<Manufacturer>();
     private IReadOnlyList<VehicleListItem> _vehicles = Array.Empty<VehicleListItem>();
     private VehicleFormModel _form = new();
@@ -196,6 +200,7 @@
     private string? _saveErrorMessage;
     private string? _saveMessage;
     private string? _listErrorMessage;
+    private CancellationTokenSource? _noticeCancellation;
 
     protected override async Task OnInitializedAsync()
     {
@@ -226,9 +231,7 @@
         }
 
         _isSaving = true;
-        _saveErrorMessage = null;
-        _saveMessage = null;
-        _saveMessageIsWarning = false;
+        ClearSaveNotice();
 
         try
         {
@@ -247,24 +250,23 @@
 
             if (await LoadVehiclesAsync())
             {
-                _saveMessage = "Vehicle added successfully. The registered vehicles list is up to date.";
+                ShowSaveMessage("Vehicle added successfully. The registered vehicles list is up to date.");
             }
             else
             {
-                _saveMessageIsWarning = true;
-                _saveMessage = "Vehicle saved, but the registered vehicles list could not be refreshed. Select Apply to retry.";
+                ShowSaveMessage("Vehicle saved, but the registered vehicles list could not be refreshed. Select Apply to retry.", warning: true);
             }
         }
         catch (DomainValidationException exception)
         {
-            _saveErrorMessage = exception.Message;
+            ShowSaveError(exception.Message);
         }
         catch (Exception exception)
         {
             Logger.LogError(exception, "Unable to create a vehicle.");
-            _saveErrorMessage = exception is DbException
+            ShowSaveError(exception is DbException
                 ? "The database did not confirm whether the vehicle was saved. Check that SQL Server is running, then check the vehicle list before trying again. Your form has been kept."
-                : "The vehicle save could not be confirmed. Your form has been kept. Check the vehicle list before trying again; if the problem continues, contact an administrator.";
+                : "The vehicle save could not be confirmed. Your form has been kept. Check the vehicle list before trying again; if the problem continues, contact an administrator.");
         }
         finally
         {
@@ -276,15 +278,74 @@
     {
         if (!_saveMessageIsWarning)
         {
-            _saveMessage = null;
+            ClearSaveNotice();
         }
 
         if (await LoadVehiclesAsync() && _saveMessageIsWarning)
         {
-            _saveMessageIsWarning = false;
-            _saveMessage = "Vehicle added successfully. The registered vehicles list is up to date.";
+            ShowSaveMessage("Vehicle added successfully. The registered vehicles list is up to date.");
         }
     }
+
+    private void ShowSaveMessage(string message, bool warning = false)
+    {
+        ClearSaveNotice();
+        _saveMessage = message;
+        _saveMessageIsWarning = warning;
+        ScheduleNoticeDismissal(warning ? ErrorNoticeDuration : SuccessNoticeDuration);
+    }
+
+    private void ShowSaveError(string message)
+    {
+        ClearSaveNotice();
+        _saveErrorMessage = message;
+        ScheduleNoticeDismissal(ErrorNoticeDuration);
+    }
+
+    private void ClearSaveNotice()
+    {
+        _noticeCancellation?.Cancel();
+        _noticeCancellation = null;
+        _saveErrorMessage = null;
+        _saveMessage = null;
+        _saveMessageIsWarning = false;
+    }
+
+    private void ScheduleNoticeDismissal(TimeSpan duration)
+    {
+        var cancellation = new CancellationTokenSource();
+        _noticeCancellation = cancellation;
+        _ = DismissNoticeAsync(duration, cancellation);
+    }
+
+    private async Task DismissNoticeAsync(TimeSpan duration, CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await Task.Delay(duration, cancellation.Token);
+            await InvokeAsync(() =>
+            {
+                if (_noticeCancellation != cancellation)
+                {
+                    return;
+                }
+
+                _noticeCancellation = null;
+                _saveErrorMessage = null;
+                _saveMessage = null;
+                StateHasChanged();
+            });
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            cancellation.Dispose();
+        }
+    }
+
+    public void Dispose() => ClearSaveNotice();
 
     private async Task<bool> LoadVehiclesAsync()
     {
