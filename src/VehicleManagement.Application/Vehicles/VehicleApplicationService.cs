@@ -68,7 +68,7 @@ public sealed class VehicleApplicationService
         var categoryConfiguration = await _categoryConfigurationRepository.GetAsync(cancellationToken);
         if (categoryConfiguration is null)
         {
-            throw new InvalidOperationException("The category configuration has not been created.");
+            throw new CategoryConfigurationMissingException();
         }
 
         var records = await _vehicleRepository.ListAsync(sortField, descending, cancellationToken);
