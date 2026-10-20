@@ -97,6 +97,17 @@ public sealed class VehicleRepository : IVehicleRepository
         return records;
     }
 
+    public async Task<IReadOnlyList<decimal>> ListWeightsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await using var context = await _contextFactory.CreateDbContextAsync(cancellationToken);
+
+        return await context.Vehicles
+            .AsNoTracking()
+            .Select(vehicle => vehicle.WeightKg)
+            .ToListAsync(cancellationToken);
+    }
+
     private sealed class VehicleQueryRow
     {
         public int Id { get; set; }

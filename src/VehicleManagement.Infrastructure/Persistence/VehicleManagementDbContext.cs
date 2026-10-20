@@ -62,6 +62,7 @@ public sealed class VehicleManagementDbContext : DbContext
     {
         builder.ToTable("VehicleCategories", table =>
         {
+            table.UseSqlOutputClause(false);
             table.HasCheckConstraint("CK_VehicleCategories_SortOrder", "[SortOrder] > 0");
             table.HasCheckConstraint("CK_VehicleCategories_MinWeightKg", "[MinWeightKg] >= 0");
         });

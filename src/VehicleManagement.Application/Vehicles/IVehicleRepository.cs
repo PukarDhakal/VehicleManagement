@@ -10,4 +10,6 @@ public interface IVehicleRepository
         VehicleSortField sortField,
         bool descending,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<decimal>> ListWeightsAsync(CancellationToken cancellationToken = default);
 }

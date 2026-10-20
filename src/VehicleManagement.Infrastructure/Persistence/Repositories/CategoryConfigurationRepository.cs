@@ -164,6 +164,25 @@ public sealed class CategoryConfigurationRepository : ICategoryConfigurationRepo
             {
                 throw new CategoryConfigurationConflictException();
             }
+
+            // Raw SQL changed the database row, but EF still sees the old values.
+            // Give EF the staged values so unique-index swaps have no dependency cycle.
+            var tracked = context.ChangeTracker.Entries<VehicleCategory>()
+                .Single(entry => entry.Entity.Id == original.Id.Value);
+            if (nameChanged)
+            {
+                tracked.Property(category => category.Name).OriginalValue = stagedName;
+            }
+
+            if (orderChanged)
+            {
+                tracked.Property(category => category.SortOrder).OriginalValue = stagedOrder;
+            }
+
+            if (minimumChanged)
+            {
+                tracked.Property(category => category.MinWeightKg).OriginalValue = stagedMinimum;
+            }
         }
     }
 

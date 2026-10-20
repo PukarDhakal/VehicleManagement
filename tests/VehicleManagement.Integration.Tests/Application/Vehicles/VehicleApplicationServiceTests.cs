@@ -150,6 +150,13 @@ public sealed class VehicleApplicationServiceTests
             ListCallCount++;
             return Task.FromResult(_records);
         }
+
+        public Task<IReadOnlyList<decimal>> ListWeightsAsync(
+            CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<decimal> weights = _records.Select(record => record.WeightKg).ToArray();
+            return Task.FromResult(weights);
+        }
     }
 
     private sealed class FakeManufacturerRepository : IManufacturerRepository

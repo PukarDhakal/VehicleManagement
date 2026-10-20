@@ -1,7 +1,9 @@
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using VehicleManagement.Application.Categories;
+using VehicleManagement.Application.Vehicles;
 using VehicleManagement.Domain.Categories;
+using VehicleManagement.Domain.Vehicles;
 using VehicleManagement.Infrastructure.Persistence;
 using VehicleManagement.Infrastructure.Persistence.Repositories;
 
@@ -181,6 +183,49 @@ public sealed class CategoryConfigurationRepositorySqlServerTests
         Assert.Equal(original.Revision, saved.Revision);
     }
 
+    [SqlServerFact]
+    public async Task ImpactConfirmationUsesPersistedVehicleWeightsBeforeSaving()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await using (var context = database.CreateContext())
+        {
+            context.Vehicles.AddRange(Enumerable.Range(0, 101)
+                .Select(_ => Vehicle.Create("Alex Driver", 1, 2020, 550m, 2026)));
+            await context.SaveChangesAsync();
+        }
+
+        var service = new CategoryManagementService(database.Repository, database.VehicleRepository);
+        var vehicleService = new VehicleApplicationService(
+            database.VehicleRepository,
+            database.ManufacturerRepository,
+            database.Repository,
+            TimeProvider.System);
+        var original = (await service.GetAsync())!;
+        var categories = ByOrder(original);
+        var proposal = new[]
+        {
+            Change(categories[0]),
+            Change(categories[1]) with { MinWeightKg = 600m },
+            Change(categories[2])
+        };
+
+        var preview = await service.SaveAsync(original.RowVersion, proposal);
+
+        Assert.True(preview.RequiresConfirmation);
+        Assert.Equal(101, preview.AffectedVehicleCount);
+        Assert.Equal(500m, ByOrder((await database.Repository.GetAsync())!)[1].MinWeightKg);
+        var beforeVehicles = await vehicleService.GetVehiclesAsync(VehicleSortField.OwnerName, descending: false);
+        Assert.Equal(101, beforeVehicles.Count);
+        Assert.All(beforeVehicles, vehicle => Assert.Equal("Medium", vehicle.CategoryName));
+
+        await service.SaveAsync(original.RowVersion, proposal, preview.ConfirmationToken);
+
+        Assert.Equal(600m, ByOrder((await database.Repository.GetAsync())!)[1].MinWeightKg);
+        var afterVehicles = await vehicleService.GetVehiclesAsync(VehicleSortField.OwnerName, descending: false);
+        Assert.Equal(101, afterVehicles.Count);
+        Assert.All(afterVehicles, vehicle => Assert.Equal("Light", vehicle.CategoryName));
+    }
+
     private static VehicleCategory[] ByOrder(CategoryConfiguration configuration) =>
         configuration.Categories.OrderBy(category => category.SortOrder).ToArray();
 
@@ -195,9 +240,13 @@ public sealed class CategoryConfigurationRepositorySqlServerTests
         {
             _options = options;
             Repository = new CategoryConfigurationRepository(new TestContextFactory(options));
+            VehicleRepository = new VehicleRepository(new TestContextFactory(options));
+            ManufacturerRepository = new ManufacturerRepository(new TestContextFactory(options));
         }
 
         public CategoryConfigurationRepository Repository { get; }
+        public VehicleRepository VehicleRepository { get; }
+        public ManufacturerRepository ManufacturerRepository { get; }
 
         public static async Task<TestDatabase> CreateAsync()
         {
