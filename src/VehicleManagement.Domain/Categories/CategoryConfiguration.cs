@@ -11,6 +11,7 @@ public sealed class CategoryConfiguration
     }
 
     public int Id { get; private set; }
+    public long Revision { get; private set; }
     public byte[] RowVersion { get; private set; } = [];
     public IReadOnlyCollection<VehicleCategory> Categories => _categories.AsReadOnly();
 
