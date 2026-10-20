@@ -1,7 +1,12 @@
+using System.Text.RegularExpressions;
+
 namespace VehicleManagement.Domain.Vehicles;
 
 public sealed class Vehicle
 {
+    public const string OwnerNamePattern =
+        @"\A(?=.*\p{L})[\p{L}\p{M} .'\u2019-]+\z";
+
     private Vehicle()
     {
     }
@@ -26,7 +31,15 @@ public sealed class Vehicle
         var trimmedOwnerName = ownerName?.Trim();
         if (string.IsNullOrWhiteSpace(trimmedOwnerName) || trimmedOwnerName.Length > 150)
         {
-            throw new DomainValidationException("Owner names must contain between 1 and 150 characters.");
+            throw new DomainValidationException("Please enter a valid name.");
+        }
+
+        if (!Regex.IsMatch(
+                trimmedOwnerName,
+                OwnerNamePattern,
+                RegexOptions.CultureInvariant))
+        {
+            throw new DomainValidationException("Please enter a valid name.");
         }
 
         if (manufacturerId <= 0)
